@@ -2,7 +2,7 @@ from iterators import eof_signal_iterator
 
 """ Classes implementing modes of encryption:
 
-* We can extend this, currently only ECB is supported
+* We can extend this, currently only ECB and CBC is supported
 
 """
 class ModeOfOperation():
