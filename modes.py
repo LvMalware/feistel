@@ -47,12 +47,16 @@ class ECB(ModeOfOperation):
             yield block
 
 #CBC mode implemented by Lucas V. Araujo <https://github.com/LvMalware/>
+
+#CBC encrypts each block xor'd against the cipher text of the previous block.
+#The first block is xor'd against a 0th block, the initialization vector (IV)
+
 class CBC(ModeOfOperation):
     
     def __init__(self, cipher, iv, padding_scheme):
         super(CBC, self).__init__(cipher=cipher, iv=iv)
-        #initialize cipher_block with the IV
-        self.cipher_block = iv
+        #initialize cipher_block with value None
+        self.cipher_block = None
         self.padding_scheme = padding_scheme
 
     def _xor(self, block1, block2):
@@ -61,29 +65,35 @@ class CBC(ModeOfOperation):
     def encrypt(self, block_iterator):
         eof_iterator = eof_signal_iterator(block_iterator)
         for data, eof in eof_iterator:
-            #on each iteration, cipher_block will be updated with the last block
+            
+            if not self.cipher_block:
+                #executed only once, on the first iteration
+                self.cipher_block = self.iv
+                #just return the IV, to be used as the first 64 bytes of the file
+                yield self.cipher_block
+            
             if not eof:
-                #CBC encrypts each block xor'd against the last cipher text of
-                #the previous block. The first block is xor'd against a fake 0th
-                #block, the initialization vector (IV)
                 self.cipher_block = self.cipher.encrypt_block(
                     self._xor(data, self.cipher_block)
                 )
             else:
+                #executed only once, for the last block of the file
                 block = data if not eof else self.padding_scheme.apply(data)
                 if len(block) == self.block_size:
                     self.cipher_block = self.cipher.encrypt_block(
                         self._xor(block, self.cipher_block)
                     )
-                
                 elif len(block) == 2 * self.block_size:
-                    self.cipher_block = self.cipher.encrypt_block(
+                    last_block = self.cipher.encrypt_block(
                         self._xor(block[:self.block_size], self.cipher_block)
                     )
                     #This will append an entire block of padding (??)
                     self.cipher_block = self.cipher.encrypt_block(
-                        self._xor(block[self.block_size:], self.cipher_block)
+                        self._xor(block[self.block_size:], last_block)
                     )
+                    #set the cipher_block variable to be last block of real data 
+                    #prepended to the extra block of padding
+                    self.cipher_block = last_block + self.cipher_block
                 else:
                     raise Exception("Padding error: Padding scheme returned " +
                         "data that is not a multiple of the block length"
@@ -91,8 +101,12 @@ class CBC(ModeOfOperation):
             yield self.cipher_block
     
     def decrypt(self, block_iterator):
-        #self.cipher_block = self.iv
         eof_iterator = eof_signal_iterator(block_iterator)
+
+        #Always get the first 64 bytes of the data as IV. Even if it was already
+        #supplied on the command line
+        self.cipher_block, eof = next(eof_iterator)
+
         for data, eof in eof_iterator:
             plaintext = self._xor(
                 self.cipher.decrypt_block(data), self.cipher_block

@@ -33,10 +33,14 @@ def main():
         padding_scheme = PKCS7(cipher.block_size)
         mode = ECB(cipher, padding_scheme)
     elif args.mode == "CBC":
-        if len(args.iv) != cipher.block_size:
+        #if no IV was informed on command line, generate one (pseudo)randomly
+        iv = args.iv.encode('utf-8') if args.iv else\
+            os.urandom(cipher.block_size)
+        #test for a valid IV length
+        if len(iv) != cipher.block_size:
             raise ValueError("Invalid IV length")
         padding_scheme = PKCS7(cipher.block_size)
-        mode = CBC(cipher, bytes(args.iv.encode('utf-8')), padding_scheme)
+        mode = CBC(cipher, iv, padding_scheme)
     else:
         raise ValueError("Mode of operation {} is not recognised".format(args.mode))
 
